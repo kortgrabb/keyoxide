@@ -1,6 +1,9 @@
 use std::fs::{self, create_dir_all};
 use base64::Engine;
-use crate::{crypto, utils};
+use crate::{crypto, ui};
+
+// TODO: Make the codebase more modular
+// ! Goodnight!
 
 #[derive(Clone)]
 pub struct Entry {
@@ -52,7 +55,7 @@ impl Manager {
 
             // Prompt user to verify the master password
             loop {
-                let entered = utils::prompt_master_password();
+                let entered = ui::prompt_master_password();
 
                 let entered_hash = crypto::derive_key_from_password(&entered, &salt).unwrap_or_else(|_| {
                     panic!("Failed to derive key from the entered password");
@@ -166,7 +169,7 @@ impl Manager {
     }
 
     fn create_master_and_salt() -> (String, String) {
-        let master_password = utils::prompt_master_password();
+        let master_password = ui::prompt_master_password();
         let salt = crypto::generate_salt();
 
         let encrypted = crypto::derive_key_from_password(&master_password, &salt).unwrap_or_else(|_| {

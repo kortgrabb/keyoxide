@@ -4,7 +4,7 @@ use manager::Manager;
 
 mod crypto;
 mod manager;
-mod utils;
+mod ui;
 
 fn main() {
     let mut manager = Manager::new();
@@ -24,7 +24,7 @@ fn main() {
                 return;
             }
             let name = &args[1];
-            let password = utils::prompt_password();
+            let password = ui::prompt_password();
             manager.add_entry(name, &password);
             manager.save_entry(name).unwrap();
         }
