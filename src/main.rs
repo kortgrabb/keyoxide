@@ -15,11 +15,10 @@ fn main() {
         [command, name] if command == "add" => {
             let password = utils::prompt_password();
             manager.add_entry(name, &password);
-            manager.save_entries();
+            manager.save_entry(name).unwrap();
         }
         [command, name] if command == "get" => {
             let entry = manager.get_entry(name).unwrap();
-
             println!("Password for {}: {}", name, entry.password);
         }
         [command] if command == "show" => {

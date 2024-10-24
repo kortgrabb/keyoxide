@@ -1,12 +1,14 @@
-use std::fs;
+use std::fs::{self, create_dir_all};
 use base64::Engine;
 use crate::{crypto, utils};
 
+#[derive(Clone)]
 pub struct Entry {
     path: std::path::PathBuf,
     pub name: String,       // Filename will be used as the name
     pub password: String,   // Content of the file
     pub nonce: Vec<u8>,     // Nonce used to encrypt the password
+    pub parent: Option<std::path::PathBuf>, // Parent directory path
 }
 
 pub struct Manager {
@@ -18,8 +20,8 @@ pub struct Manager {
 }
 
 // Constants for filenames and paths
-const MASTER_PASSWORD_FILENAME: &str = "master_password.bin";
-const SALT_FILENAME: &str = "salt.bin";
+const MASTER_PASSWORD_FILENAME: &str = ".master_password";
+const SALT_FILENAME: &str = ".salt";
 const PASSWORD_MANAGER_DIR: &str = ".password_manager";
 const ENTRIES_SUBDIR: &str = "entries";
 const ENTRY_EXTENSION: &str = "ent";
@@ -81,50 +83,65 @@ impl Manager {
 
     // Load entries from files in the entries path
     fn load_entries(&self) -> Vec<Entry> {
-        fn read_entries_in_dir(path: &std::path::Path) -> Vec<Entry> {
-            fs::read_dir(path)
-                .unwrap()
-                .filter_map(|entry| {
-                    let entry = entry.ok()?;
-                    let path = entry.path();
-
-                    if path.is_dir() {
-                        return Some(read_entries_in_dir(&path));
-                    }
-
-                    if path.extension()? != ENTRY_EXTENSION {
-                        return None;
-                    }
-
-                    let name = entry.file_name().into_string().ok()?;
-                    let name = name.trim_end_matches(&format!(".{}", ENTRY_EXTENSION)).to_string();
-
-                    let content = fs::read_to_string(&path).ok()?;
-                    let mut lines = content.lines();
-
-                    let password = lines.next()?.to_string();
-                    let nonce = base64::engine::general_purpose::STANDARD.decode(lines.next()?.as_bytes()).ok()?;
-
-                    Some(vec![Entry { path, name, password, nonce }])
-                })
-                .flatten()
-                .collect()
-        }
-
-        read_entries_in_dir(&self.entries_path)
+        self.read_entries_in_dir(&self.entries_path, None)
     }
 
-    pub fn save_entries(&self) {
-        for entry in &self.entries {
-            let path = &entry.path;
-            let content = format!(
-                "{}\n{}",
-                entry.password.trim(),
-                base64::engine::general_purpose::STANDARD.encode(&entry.nonce)
-            );
-            fs::write(path, content).unwrap();
-        }
+    fn read_entries_in_dir(&self, path: &std::path::Path, parent: Option<std::path::PathBuf>) -> Vec<Entry> {
+        fs::read_dir(path)
+            .unwrap()
+            .filter_map(|entry| {
+                let entry = entry.ok()?;
+                let path = entry.path();
+
+                if path.is_dir() {
+                    return Some(self.read_entries_in_dir(&path, Some(path.clone())));
+                }
+
+                if path.extension()? != ENTRY_EXTENSION {
+                    return None;
+                }
+
+                let name = entry.file_name().into_string().ok()?;
+                let name = name.trim_end_matches(&format!(".{}", ENTRY_EXTENSION)).to_string();
+
+                let content = fs::read_to_string(&path).ok()?;
+                let mut lines = content.lines();
+
+                let password = lines.next()?.to_string();
+                let nonce = base64::engine::general_purpose::STANDARD.decode(lines.next()?.as_bytes()).ok()?;
+
+                Some(vec![Entry { path, name, password, nonce, parent: parent.clone() }])
+            })
+            .flatten()
+            .collect()
     }
+
+pub fn save_entry(&self, name: &str) -> std::io::Result<()> {
+    // Find the entry or return an error if not found
+    let entry = self.entries
+        .iter()
+        .find(|entry| entry.name == name)
+        .ok_or_else(|| std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("Entry '{}' not found", name)
+        ))?;
+
+    // Create the content string
+    let content = format!(
+        "{}\n{}",
+        entry.password,
+        base64::engine::general_purpose::STANDARD.encode(&entry.nonce)
+    );
+
+    // Ensure the parent directory exists
+    if let Some(parent) = entry.path.parent() {
+        create_dir_all(parent)?;
+    }
+    println!("Entry '{}' saved", name);
+    // Write the content to the file
+    fs::write(&entry.path, content)
+
+}
     
     fn save_master_and_salt(&self, master: &str, salt: &str) {
         let master_password_path = self.path.join(MASTER_PASSWORD_FILENAME);
@@ -172,6 +189,7 @@ impl Manager {
             name: name.to_string(),
             password: encoded,
             nonce,
+            parent: Some(self.entries_path.clone()),
         };
 
         self.entries.push(entry);
@@ -188,7 +206,7 @@ impl Manager {
             .split("/").last().unwrap();
 
         let entry = self.entries.iter().find(|entry| entry.name == entry_name)?;
-        // Exctract the base64 encoded password from the entry
+        // Extract the base64 encoded password from the entry
         let encoded_password = &entry.password;
         let decoded = match base64::engine::general_purpose::STANDARD.decode(encoded_password.as_bytes()) {
             Ok(decoded) => decoded,
@@ -212,10 +230,12 @@ impl Manager {
             name: entry.name.clone(),
             password: decrypted,
             nonce: entry.nonce.clone(),
+            parent: entry.parent.clone(),
         })
     }
 
     pub fn list_entry_tree(&self) {
+        // print the entries in the root directory
         for entry in &self.entries {
             println!("{}", entry.name);
         }
