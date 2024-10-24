@@ -1,6 +1,6 @@
 use aes_gcm::{aead::Aead, AeadCore, Aes256Gcm, Key, KeyInit, Nonce};
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
     Argon2,
 };
 
@@ -18,16 +18,16 @@ pub fn derive_key_from_password(
 }
 
 pub fn generate_salt() -> String {
-    let salt = SaltString::generate(&mut OsRng).to_string();
+    
 
-    salt
+    SaltString::generate(&mut OsRng).to_string()
 }
 
 pub fn encrypt_password_aes256(password: &str, key_str: &str) -> (Vec<u8>, Vec<u8>) {
     let key_slice = key_str.as_bytes()[..32].to_vec();
     let key = Key::<Aes256Gcm>::from_slice(&key_slice);
 
-    let cipher = Aes256Gcm::new(&key);
+    let cipher = Aes256Gcm::new(key);
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
 
     let ciphertext = cipher
@@ -41,7 +41,7 @@ pub fn decrypt_password_aes256(encrypted: &[u8], key_str: &str, nonce: &[u8]) ->
     let key_slice = &key_str.as_bytes()[..32];
     let key = Key::<Aes256Gcm>::from_slice(key_slice);
 
-    let cipher = Aes256Gcm::new(&key);
+    let cipher = Aes256Gcm::new(key);
 
     let decrypted_bytes = cipher
         .decrypt(Nonce::from_slice(nonce), encrypted)

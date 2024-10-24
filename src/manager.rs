@@ -3,6 +3,7 @@ use base64::Engine;
 use crate::{crypto, utils};
 
 pub struct Entry {
+    path: std::path::PathBuf,
     pub name: String,       // Filename will be used as the name
     pub password: String,   // Content of the file
     pub nonce: Vec<u8>,     // Nonce used to encrypt the password
@@ -80,59 +81,42 @@ impl Manager {
 
     // Load entries from files in the entries path
     fn load_entries(&self) -> Vec<Entry> {
-        let mut entries = vec![];
+        fn read_entries_in_dir(path: &std::path::Path) -> Vec<Entry> {
+            fs::read_dir(path)
+                .unwrap()
+                .filter_map(|entry| {
+                    let entry = entry.ok()?;
+                    let path = entry.path();
 
-        for entry in fs::read_dir(&self.entries_path).unwrap() {
-            let entry = entry.unwrap();
-            let name = entry.file_name().into_string().unwrap();
-            let path = entry.path();
-
-            // Skip files that do not have the .entry extension
-            if path.extension().unwrap_or_default() != ENTRY_EXTENSION {
-                continue;
-            }
-
-            // Read the password and nonce from the file
-            let lines = fs::read_to_string(path).unwrap();
-            let mut lines = lines.lines();
-
-            let password = match lines.next() {
-                Some(line) => line,
-                None => {
-                    eprintln!("Failed to read password for entry: {}", name);
-                    continue;
-                }
-            };
-            
-            let nonce = match lines.next() {
-                Some(line) => match base64::engine::general_purpose::STANDARD.decode(line.as_bytes()) {
-                    Ok(decoded) => decoded,
-                    Err(e) => {
-                        eprintln!("Failed to decode nonce for entry {}: {}", name, e);
-                        continue;
+                    if path.is_dir() {
+                        return Some(read_entries_in_dir(&path));
                     }
-                },
-                None => {
-                    eprintln!("Failed to read nonce for entry: {}", name);
-                    continue;
-                }
-            };
-            
-            let entry = Entry {
-                name,
-                password: password.to_string(),
-                nonce,
-            };
 
-            entries.push(entry);
+                    if path.extension()? != ENTRY_EXTENSION {
+                        return None;
+                    }
+
+                    let name = entry.file_name().into_string().ok()?;
+                    let name = name.trim_end_matches(&format!(".{}", ENTRY_EXTENSION)).to_string();
+
+                    let content = fs::read_to_string(&path).ok()?;
+                    let mut lines = content.lines();
+
+                    let password = lines.next()?.to_string();
+                    let nonce = base64::engine::general_purpose::STANDARD.decode(lines.next()?.as_bytes()).ok()?;
+
+                    Some(vec![Entry { path, name, password, nonce }])
+                })
+                .flatten()
+                .collect()
         }
 
-        entries
+        read_entries_in_dir(&self.entries_path)
     }
 
     pub fn save_entries(&self) {
         for entry in &self.entries {
-            let path = self.entries_path.join(format!("{}.{}", entry.name, ENTRY_EXTENSION));
+            let path = &entry.path;
             let content = format!(
                 "{}\n{}",
                 entry.password.trim(),
@@ -152,8 +136,8 @@ impl Manager {
 
     fn load_master_password(&self) -> String {
         let master_password_path = self.path.join(MASTER_PASSWORD_FILENAME);
-        let master_password = fs::read_to_string(master_password_path).unwrap();
-        master_password
+        
+        fs::read_to_string(master_password_path).unwrap()
     }
 
     fn load_salt(&self) -> String {
@@ -181,7 +165,10 @@ impl Manager {
         let (nonce, encrypted_vec) = crypto::encrypt_password_aes256(password, &derived_key);
         let encoded = base64::engine::general_purpose::STANDARD.encode(&encrypted_vec);
         
+        let path = self.entries_path.join(format!("{}.{}", name, ENTRY_EXTENSION));
+
         let entry = Entry {
+            path,
             name: name.to_string(),
             password: encoded,
             nonce,
@@ -191,15 +178,18 @@ impl Manager {
     }
 
     pub fn get_entry(&self, path: &str) -> Option<Entry> {
-        let folder_to_search = self.entries_path.join(path);
-
-        if !folder_to_search.exists() {
+        let path = format!("{}.{}", path, ENTRY_EXTENSION);
+        if !self.entries_path.join(&path).exists() {
             return None;
         }
 
-        let found = self.entries.iter().find(|entry| entry.name == path)?;
-        
-        let encoded_password = found.password.trim();
+        let entry_name = path
+            .trim_end_matches(&format!(".{}", ENTRY_EXTENSION))
+            .split("/").last().unwrap();
+
+        let entry = self.entries.iter().find(|entry| entry.name == entry_name)?;
+        // Exctract the base64 encoded password from the entry
+        let encoded_password = &entry.password;
         let decoded = match base64::engine::general_purpose::STANDARD.decode(encoded_password.as_bytes()) {
             Ok(decoded) => decoded,
             Err(e) => {
@@ -208,14 +198,20 @@ impl Manager {
             }
         };
         
-        let decrypted = crypto::decrypt_password_aes256(&decoded, &self.derived_key, &found.nonce).unwrap_or_else(|_| {
+        let decrypted = crypto::decrypt_password_aes256(&decoded, 
+            &self.derived_key, 
+            &self.entries
+            .iter()
+            .find(|entry| entry.name == entry_name)?.nonce)
+            .unwrap_or_else(|_| {
             panic!("Failed to decrypt the password");
         });
         
         Some(Entry {
-            name: found.name.clone(),
+            path: entry.path.clone(),
+            name: entry.name.clone(),
             password: decrypted,
-            nonce: found.nonce.clone(),
+            nonce: entry.nonce.clone(),
         })
     }
 
