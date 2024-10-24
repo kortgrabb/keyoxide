@@ -5,7 +5,7 @@ use crate::{crypto, utils};
 #[derive(Clone)]
 pub struct Entry {
     path: std::path::PathBuf,
-    pub name: String,       // Filename will be used as the name
+    pub name: String,       // Full path-based name (e.g., "personal/email")
     pub password: String,   // Content of the file
     pub nonce: Vec<u8>,     // Nonce used to encrypt the password
     pub parent: Option<std::path::PathBuf>, // Parent directory path
@@ -101,8 +101,14 @@ impl Manager {
                     return None;
                 }
 
-                let name = entry.file_name().into_string().ok()?;
-                let name = name.trim_end_matches(&format!(".{}", ENTRY_EXTENSION)).to_string();
+                // Get the relative path from entries directory
+                let relative_path = path.strip_prefix(&self.entries_path).ok()?;
+                // Convert the path to a name (e.g., "personal/email")
+                let name = relative_path
+                    .with_extension("")
+                    .to_string_lossy()
+                    .replace('\\', "/")
+                    .to_string();
 
                 let content = fs::read_to_string(&path).ok()?;
                 let mut lines = content.lines();
@@ -116,32 +122,28 @@ impl Manager {
             .collect()
     }
 
-pub fn save_entry(&self, name: &str) -> std::io::Result<()> {
-    // Find the entry or return an error if not found
-    let entry = self.entries
-        .iter()
-        .find(|entry| entry.name == name)
-        .ok_or_else(|| std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            format!("Entry '{}' not found", name)
-        ))?;
+    // Save an entry to a file
+    pub fn save_entry(&self, name: &str) -> std::io::Result<()> {
+        let entry = self.entries
+            .iter()
+            .find(|entry| entry.name == name)
+            .ok_or_else(|| std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Entry '{}' not found", name)
+            ))?;
 
-    // Create the content string
-    let content = format!(
-        "{}\n{}",
-        entry.password,
-        base64::engine::general_purpose::STANDARD.encode(&entry.nonce)
-    );
+        let content = format!(
+            "{}\n{}",
+            entry.password,
+            base64::engine::general_purpose::STANDARD.encode(&entry.nonce)
+        );
 
-    // Ensure the parent directory exists
-    if let Some(parent) = entry.path.parent() {
-        create_dir_all(parent)?;
+        if let Some(parent) = entry.path.parent() {
+            create_dir_all(parent)?;
+        }
+        println!("Entry '{}' saved", name);
+        fs::write(&entry.path, content)
     }
-    println!("Entry '{}' saved", name);
-    // Write the content to the file
-    fs::write(&entry.path, content)
-
-}
     
     fn save_master_and_salt(&self, master: &str, salt: &str) {
         let master_password_path = self.path.join(MASTER_PASSWORD_FILENAME);
@@ -182,31 +184,31 @@ pub fn save_entry(&self, name: &str) -> std::io::Result<()> {
         let (nonce, encrypted_vec) = crypto::encrypt_password_aes256(password, &derived_key);
         let encoded = base64::engine::general_purpose::STANDARD.encode(&encrypted_vec);
         
-        let path = self.entries_path.join(format!("{}.{}", name, ENTRY_EXTENSION));
+        // Create full path including directories
+        let path = self.entries_path.join(name).with_extension(ENTRY_EXTENSION);
+        
+        // Ensure parent directories exist
+        if let Some(parent) = path.parent() {
+            create_dir_all(parent).unwrap_or_else(|_| {
+                panic!("Failed to create parent directories for {}", name);
+            });
+        }
 
         let entry = Entry {
-            path,
+            path: path.clone(),
             name: name.to_string(),
             password: encoded,
             nonce,
-            parent: Some(self.entries_path.clone()),
+            parent: path.parent().map(|p| p.to_path_buf()),
         };
 
         self.entries.push(entry);
     }
 
-    pub fn get_entry(&self, path: &str) -> Option<Entry> {
-        let path = format!("{}.{}", path, ENTRY_EXTENSION);
-        if !self.entries_path.join(&path).exists() {
-            return None;
-        }
-
-        let entry_name = path
-            .trim_end_matches(&format!(".{}", ENTRY_EXTENSION))
-            .split("/").last().unwrap();
-
-        let entry = self.entries.iter().find(|entry| entry.name == entry_name)?;
-        // Extract the base64 encoded password from the entry
+    pub fn get_entry(&self, name: &str) -> Option<Entry> {
+        // Find entry directly by its full path-based name
+        let entry = self.entries.iter().find(|entry| entry.name == name)?;
+        
         let encoded_password = &entry.password;
         let decoded = match base64::engine::general_purpose::STANDARD.decode(encoded_password.as_bytes()) {
             Ok(decoded) => decoded,
@@ -216,12 +218,11 @@ pub fn save_entry(&self, name: &str) -> std::io::Result<()> {
             }
         };
         
-        let decrypted = crypto::decrypt_password_aes256(&decoded, 
+        let decrypted = crypto::decrypt_password_aes256(
+            &decoded, 
             &self.derived_key, 
-            &self.entries
-            .iter()
-            .find(|entry| entry.name == entry_name)?.nonce)
-            .unwrap_or_else(|_| {
+            &entry.nonce
+        ).unwrap_or_else(|_| {
             panic!("Failed to decrypt the password");
         });
         
@@ -235,9 +236,29 @@ pub fn save_entry(&self, name: &str) -> std::io::Result<()> {
     }
 
     pub fn list_entry_tree(&self) {
-        // print the entries in the root directory
-        for entry in &self.entries {
-            println!("{}", entry.name);
+        self.list_entry_tree_recursive(&self.entries_path, 0);
+    }
+
+    fn list_entry_tree_recursive(&self, path: &std::path::Path, depth: usize) {
+        let entries = fs::read_dir(path).unwrap();
+        for entry in entries {
+            let entry = entry.unwrap();
+            let entry_path = entry.path();
+            
+            // Get relative path from entries directory
+            if let Ok(relative_path) = entry_path.strip_prefix(&self.entries_path) {
+                let display_name = relative_path
+                    .with_extension("")
+                    .to_string_lossy()
+                    .replace('\\', "/");
+
+                let indent = "  ".repeat(depth);
+                println!("{}{}", indent, display_name);
+                
+                if entry_path.is_dir() {
+                    self.list_entry_tree_recursive(&entry_path, depth + 1);
+                }
+            }
         }
     }
 }
