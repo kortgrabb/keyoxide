@@ -34,3 +34,14 @@ pub fn prompt_on_same_line(prompt: &str) -> String {
     io::stdin().read_line(&mut input).unwrap();
     input.trim().to_string()
 }
+
+pub fn prompt_yes_no(prompt: &str) -> bool {
+    loop {
+        let response = prompt_on_same_line(prompt);
+        match response.to_lowercase().as_str() {
+            "y" | "yes" => return true,
+            "n" | "no" => return false,
+            _ => println!("Invalid response, please enter 'yes' or 'no'"),
+        }
+    }
+}

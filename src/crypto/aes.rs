@@ -9,13 +9,10 @@ use aes_gcm::{
     KeyInit,
     Nonce,
 };
-
-use crate::Result;
-
 pub struct AesEncryption;
 
 impl AesEncryption {
-    pub fn encrypt(password: &str, key_str: &str) -> Result<(Vec<u8>, Vec<u8>)> {
+    pub fn encrypt(password: &str, key_str: &str) -> Result<(Vec<u8>, Vec<u8>), crate::PasswordManagerError> {
         let key_slice = key_str.as_bytes()[..32].to_vec();
         let key = Key::<Aes256Gcm>::from_slice(&key_slice);
         let cipher = Aes256Gcm::new(key);
@@ -28,7 +25,7 @@ impl AesEncryption {
         Ok((nonce.to_vec(), ciphertext))
     }
 
-    pub fn decrypt(encrypted: &[u8], key_str: &str, nonce: &[u8]) -> Result<String> {
+    pub fn decrypt(encrypted: &[u8], key_str: &str, nonce: &[u8]) -> Result<String, crate::PasswordManagerError> {
         let key_slice = &key_str.as_bytes()[..32];
         let key = Key::<Aes256Gcm>::from_slice(key_slice);
         let cipher = Aes256Gcm::new(key);

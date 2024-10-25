@@ -9,6 +9,7 @@ pub mod gen;
 
 use entry::EntryManager;
 use error::PasswordManagerError;
+use gen::PasswordGenerator;
 
 
 fn main() -> Result<(), PasswordManagerError> {
@@ -41,19 +42,27 @@ fn print_usage() {
     println!("  show          Display all entries in a tree structure");
 }
 
+fn extract_options(args: &[String]) -> Vec<String> {
+    args.iter().filter(|arg| arg.starts_with("--")).cloned().collect()
+}
+
 fn handle_add(args: &[String], manager: &mut EntryManager) -> Result<(), PasswordManagerError> {
-    if args.len() != 2 {
-        println!("Usage: password_manager add [name]");
-        return Ok(());
+    let name = &args[1];
+    let options = extract_options(args);
+
+    if options.contains(&String::from("--gen")) {
+        let gen = PasswordGenerator::default();
+        let password = gen.generate();
+        manager.add_entry(name, &password)?;
+        println!("Generated password for {}: {}", name, password);
+    } else {
+        let password = ui::prompt_password();
+        manager.add_entry(name, &password)?;
+        println!("Added password for {}", name);
     }
 
-    let name = &args[1];
-    let password = ui::prompt_password();
-    
-    manager.add_entry(name, &password)?;
     manager.save_entry(name)?;
-    
-    println!("Successfully added entry '{}'", name);
+
     Ok(())
 }
 
@@ -82,6 +91,5 @@ fn handle_show(args: &[String], manager: &EntryManager) -> Result<(), PasswordMa
         return Ok(());
     }
 
-    println!("Password entries:");
     manager.list_entry_tree()
 }

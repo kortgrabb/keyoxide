@@ -37,8 +37,18 @@ impl EntryManager {
         let master_password = self.vault_manager.load_master_password()?;
         let salt = self.vault_manager.load_salt()?;
 
-        // Prompt user to verify the master password
         loop {
+            let env_var = std::env::var("MASTER_KEY").ok();
+
+            if let Some(env_var) = env_var {
+                let env_var_hash = key_derivation::derive_key(&env_var, &salt)?;
+                if env_var_hash == master_password {
+                    break;
+                } else {
+                    println!("ENV variable MASTER_KEY is set, but the password does not match.");
+                }
+            }
+
             let entered = ui::prompt_master_password(false);
             let entered_hash = key_derivation::derive_key(&entered, &salt)?;
 
@@ -157,7 +167,6 @@ impl EntryManager {
         }
 
         fs::write(&entry.path, content)?;
-        println!("Entry '{}' saved", name);
         Ok(())
     }
 
@@ -167,6 +176,7 @@ impl EntryManager {
         let encoded = base64::engine::general_purpose::STANDARD.encode(&encrypted_vec);
         
         let path = self.vault_manager.entries_path().join(name).with_extension(ENTRY_EXTENSION);
+       
         
         if let Some(parent) = path.parent() {
             create_dir_all(parent)?;
@@ -180,7 +190,19 @@ impl EntryManager {
             parent: path.parent().map(|p| p.to_path_buf()),
         };
 
+        // check if entry already exists
+        if self.entries.iter().any(|entry| entry.name == name) {
+            let overwrite = ui::prompt_yes_no("An entry with this name already exists, do you want to overwrite it?");
+            if !overwrite {
+                return Ok(());
+            }
+
+            // remove the existing entry
+            self.entries.retain(|entry| entry.name != name);
+        }
+
         self.entries.push(entry);
+        
         Ok(())
     }
 
@@ -189,7 +211,6 @@ impl EntryManager {
             .iter()
             .find(|entry| entry.path.with_extension("").to_string_lossy().ends_with(name))
             .ok_or_else(|| PasswordManagerError::EntryNotFound(name.to_string()))?;
-        println!("Entry path: {:?}", entry.path); 
         let encoded_password = &entry.password;
         let decoded = base64::engine::general_purpose::STANDARD.decode(encoded_password.as_bytes()).unwrap_or_else(|e| {
             panic!("Failed to decode base64 password: {}", e);
@@ -216,16 +237,25 @@ impl EntryManager {
             let entry_path = entry.path();
             
             if let Ok(relative_path) = entry_path.strip_prefix(self.vault_manager.entries_path()) {
-                let display_name = relative_path
+                let path_name = relative_path
                     .with_extension("")
                     .to_string_lossy()
                     .replace('\\', "/");
 
+                let display_name = path_name
+                    .split("/")
+                    .last()
+                    .unwrap_or_else(|| {
+                        panic!("Failed to get last path component");
+                    });
+
                 let indent = "  ".repeat(depth);
-                println!("{}{}", indent, display_name);
                 
                 if entry_path.is_dir() {
+                    println!("{}{}/", indent, display_name);
                     self.list_entry_tree_recursive(&entry_path, depth + 1)?;
+                } else if entry_path.extension().and_then(|ext| ext.to_str()) == Some(ENTRY_EXTENSION) {
+                    println!("{}*{}", indent, display_name);
                 }
             }
         }

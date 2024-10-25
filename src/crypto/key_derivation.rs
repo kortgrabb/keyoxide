@@ -6,9 +6,7 @@ use argon2::{
     Argon2,
 };
 
-use crate::Result;
-
-pub fn derive_key(password: &str, salt: &str) -> Result<String> {
+pub fn derive_key(password: &str, salt: &str) -> Result<String, crate::PasswordManagerError> {
     let argon2 = Argon2::default();
     let salt = SaltString::from_b64(salt)
         .map_err(|e| crate::PasswordManagerError::Crypto(e.to_string()))?;
