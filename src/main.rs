@@ -1,11 +1,18 @@
-// src/main.rs
 use std::env;
 
-use keyoxide::{entry::EntryManager, error::PasswordManagerError, ui};
+pub mod crypto;
+pub mod entry;
+pub mod error;
+pub mod storage;
+pub mod ui;
+pub mod gen;
+
+use entry::EntryManager;
+use error::PasswordManagerError;
+
 
 fn main() -> Result<(), PasswordManagerError> {
     let mut manager = EntryManager::new();
-    println!("Welcome to Password Manager!");
     manager.init_or_load()?;
 
     let args: Vec<String> = env::args().skip(1).collect();

@@ -1,19 +1,24 @@
 use std::fs::{self, create_dir_all};
 use std::path::PathBuf;
 
-pub struct Storage {
+pub struct VaultManager {
     base_path: PathBuf,
     entries_path: PathBuf,
 }
 
-impl Storage {
+const BASE_PATH: &str = "./.password_manager";
+const ENTRIES_PATH: &str = "entries";
+const MASTER_PASSWORD_FILE: &str = ".master_password";
+const SALT_FILE: &str = ".salt";
+
+impl VaultManager {
     pub fn new() -> Self {
         #[cfg(debug_assertions)]
-        let base_path = PathBuf::from("./.password_manager");
+        let base_path = PathBuf::from(BASE_PATH);
         #[cfg(not(debug_assertions))]
         let base_path = dirs::home_dir().unwrap().join(".password_manager");
 
-        let entries_path = base_path.join("entries");
+        let entries_path = base_path.join(ENTRIES_PATH);
         
         Self {
             base_path,
@@ -38,12 +43,12 @@ impl Storage {
     }
 
     pub fn save_master_password(&self, password: &str) -> crate::Result<()> {
-        fs::write(self.base_path.join(".master_password"), password)?;
+        fs::write(self.base_path.join(MASTER_PASSWORD_FILE), password)?;
         Ok(())
     }
 
     pub fn save_salt(&self, salt: &str) -> crate::Result<()> {
-        fs::write(self.base_path.join(".salt"), salt)?;
+        fs::write(self.base_path.join(SALT_FILE), salt)?;
         Ok(())
     }
 

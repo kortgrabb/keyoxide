@@ -1,9 +1,6 @@
-/*
-The EntryManager is responsible for managing the entries in the password manager. It is responsible for loading, saving, and adding entries. It also provides methods to list the entries in a tree-like structure.
- */
 use std::fs::{self, create_dir_all};
 use base64::Engine;
-use crate::{crypto::{aes::AesEncryption, key_derivation}, error::PasswordManagerError, storage::Storage, ui};
+use crate::{crypto::{aes::AesEncryption, key_derivation}, error::PasswordManagerError, storage::VaultManager, ui};
 
 use super::Entry;
 
@@ -11,7 +8,7 @@ const ENTRY_EXTENSION: &str = "ent";
 
 pub struct EntryManager {
     derived_key: String,
-    storage: Storage,
+    vault_manager: VaultManager,
     entries: Vec<Entry>,
     salt: String,
 }
@@ -20,15 +17,15 @@ impl EntryManager {
     pub fn new() -> Self {
         Self {
             derived_key: String::new(),
-            storage: Storage::new(),
+            vault_manager: VaultManager::new(),
             entries: vec![],
             salt: String::new(),
         }
     }
 
     pub fn init_or_load(&mut self) -> Result<(), PasswordManagerError> {
-        self.storage.init()?;
-        if self.storage.load_master_password().is_ok() {
+        self.vault_manager.init()?;
+        if self.vault_manager.load_master_password().is_ok() {
             self.load_existing()?;
         } else {
             self.initialize_new()?;
@@ -37,8 +34,8 @@ impl EntryManager {
     }
 
     fn load_existing(&mut self) -> Result<(), PasswordManagerError> {
-        let master_password = self.storage.load_master_password()?;
-        let salt = self.storage.load_salt()?;
+        let master_password = self.vault_manager.load_master_password()?;
+        let salt = self.vault_manager.load_salt()?;
 
         // Prompt user to verify the master password
         loop {
@@ -62,8 +59,8 @@ impl EntryManager {
         let salt = key_derivation::generate_salt();
         let derived_key = key_derivation::derive_key(&master_password, &salt)?;
 
-        self.storage.save_master_password(&derived_key)?;
-        self.storage.save_salt(&salt)?;
+        self.vault_manager.save_master_password(&derived_key)?;
+        self.vault_manager.save_salt(&salt)?;
 
         self.derived_key = derived_key;
         self.salt = salt;
@@ -71,7 +68,7 @@ impl EntryManager {
     }
 
     fn load_entries(&self) -> Result<Vec<Entry>, PasswordManagerError> {
-        self.read_entries_in_dir(self.storage.entries_path(), None)
+        self.read_entries_in_dir(self.vault_manager.entries_path(), None)
     }
 
     fn read_entries_in_dir(&self, path: &std::path::Path, parent: Option<std::path::PathBuf>) -> Result<Vec<Entry>, PasswordManagerError> {
@@ -92,7 +89,7 @@ impl EntryManager {
             }
 
             // Get the relative path from entries directory
-            let relative_path = path.strip_prefix(self.storage.entries_path()).map_err(|_| {
+            let relative_path = path.strip_prefix(self.vault_manager.entries_path()).map_err(|_| {
                 PasswordManagerError::Io(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
                     "Invalid path prefix",
@@ -169,7 +166,7 @@ impl EntryManager {
         let (nonce, encrypted_vec) = AesEncryption::encrypt(password, &derived_key)?;
         let encoded = base64::engine::general_purpose::STANDARD.encode(&encrypted_vec);
         
-        let path = self.storage.entries_path().join(name).with_extension(ENTRY_EXTENSION);
+        let path = self.vault_manager.entries_path().join(name).with_extension(ENTRY_EXTENSION);
         
         if let Some(parent) = path.parent() {
             create_dir_all(parent)?;
@@ -190,9 +187,9 @@ impl EntryManager {
     pub fn get_entry(&self, name: &str) -> Result<Entry, PasswordManagerError> {
         let entry = self.entries
             .iter()
-            .find(|entry| entry.name == name)
+            .find(|entry| entry.path.with_extension("").to_string_lossy().ends_with(name))
             .ok_or_else(|| PasswordManagerError::EntryNotFound(name.to_string()))?;
-        
+        println!("Entry path: {:?}", entry.path); 
         let encoded_password = &entry.password;
         let decoded = base64::engine::general_purpose::STANDARD.decode(encoded_password.as_bytes()).unwrap_or_else(|e| {
             panic!("Failed to decode base64 password: {}", e);
@@ -210,7 +207,7 @@ impl EntryManager {
     }
 
     pub fn list_entry_tree(&self) -> Result<(), PasswordManagerError> {
-        self.list_entry_tree_recursive(self.storage.entries_path(), 0)
+        self.list_entry_tree_recursive(self.vault_manager.entries_path(), 0)
     }
 
     fn list_entry_tree_recursive(&self, path: &std::path::Path, depth: usize) -> Result<(), PasswordManagerError> {
@@ -218,7 +215,7 @@ impl EntryManager {
             let entry = entry?;
             let entry_path = entry.path();
             
-            if let Ok(relative_path) = entry_path.strip_prefix(self.storage.entries_path()) {
+            if let Ok(relative_path) = entry_path.strip_prefix(self.vault_manager.entries_path()) {
                 let display_name = relative_path
                     .with_extension("")
                     .to_string_lossy()
