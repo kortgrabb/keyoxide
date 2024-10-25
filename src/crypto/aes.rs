@@ -1,3 +1,6 @@
+/*
+This module is responsible for encrypting and decrypting passwords using AES-GCM
+ */
 use aes_gcm::{
     aead::{Aead, OsRng},
     AeadCore,

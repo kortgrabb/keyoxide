@@ -1,3 +1,6 @@
+/*
+The EntryManager is responsible for managing the entries in the password manager. It is responsible for loading, saving, and adding entries. It also provides methods to list the entries in a tree-like structure.
+ */
 use std::fs::{self, create_dir_all};
 use base64::Engine;
 use crate::{crypto::{aes::AesEncryption, key_derivation}, error::PasswordManagerError, storage::Storage, ui};
@@ -96,12 +99,17 @@ impl EntryManager {
                 ))
             })?;
 
-            // Convert the path to a name (e.g., "personal/email")
-            let name = relative_path
+            // Convert the relative path to a name
+            let path_name = relative_path
                 .with_extension("")
                 .to_string_lossy()
                 .replace('\\', "/")
                 .to_string();
+
+            let entry_name = path_name
+                .split("/").last().unwrap_or_else(|| {
+                    panic!("Failed to get last path component");
+                });
 
             let content = fs::read_to_string(&path)?;
             let mut lines = content.lines();
@@ -125,7 +133,7 @@ impl EntryManager {
 
             entries.push(Entry {
                 path,
-                name,
+                name: entry_name.into(),
                 password,
                 nonce,
                 parent: parent.clone(),
