@@ -176,19 +176,19 @@ impl EntryManager {
         let (nonce, encrypted_vec) = AesEncryption::encrypt(password, &derived_key)?;
         let encoded = base64::engine::general_purpose::STANDARD.encode(&encrypted_vec);
         
-        let path = self.vault_manager.entries_path().join(name).with_extension(ENTRY_EXTENSION);
+        let entry_path = self.vault_manager.entries_path().join(name).with_extension(ENTRY_EXTENSION);
        
         
-        if let Some(parent) = path.parent() {
+        if let Some(parent) = entry_path.parent() {
             create_dir_all(parent)?;
         }
 
         let entry = Entry {
-            path: path.clone(),
+            path: entry_path.clone(),
             name: name.to_string(),
             password: encoded,
             nonce,
-            parent: path.parent().map(|p| p.to_path_buf()),
+            parent: entry_path.parent().map(|p| p.to_path_buf()),
         };
 
         // check if entry already exists
@@ -204,6 +204,23 @@ impl EntryManager {
 
         self.entries.push(entry);
         
+        Ok(())
+    }
+
+    pub fn remove_entry(&mut self, name: &str) -> Result<(), PasswordManagerError> {
+        let found = self.entries
+            .iter()
+            .find(|ent| ent.path.with_extension("").to_string_lossy().ends_with(name))
+            .ok_or_else(|| PasswordManagerError::EntryNotFound(name.to_string()))?;
+
+        let proceed = ui::prompt_yes_no("Are you sure? ");
+        if proceed {
+            match fs::remove_file(&found.path) {
+                Ok(_) => println!("Entry {} was removed", found.name),
+                Err(e) => println!("Failed to remove entry: {}", e),
+            }
+        }
+
         Ok(())
     }
 

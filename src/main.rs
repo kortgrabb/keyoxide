@@ -30,6 +30,7 @@ fn run(mut manager: EntryManager) -> Result<(), PasswordManagerError> {
         "add" => handle_add(&args, &mut manager),
         "get" => handle_get(&args, &manager),
         "show" => handle_show(&args, &manager),
+        "remove" | "delete" => handle_remove(&args, &mut manager),
         _ => {
             println!("Unknown command: {}", args[0]);
             print_usage();
@@ -69,7 +70,7 @@ fn handle_add(args: &[String], manager: &mut EntryManager) -> Result<(), Passwor
 
     if options.contains_key("gen") {
         let mut gen = PasswordGenerator::default();
-        
+
         if options.contains_key("length") {
             let length = options.get("length").unwrap().parse().unwrap();
             gen = gen.with_length(length);
@@ -86,6 +87,13 @@ fn handle_add(args: &[String], manager: &mut EntryManager) -> Result<(), Passwor
 
     manager.save_entry(name)?;
 
+    Ok(())
+}
+
+fn handle_remove(args: &[String], manager: &mut EntryManager) -> Result<(), PasswordManagerError> {
+    let name = &args[1];
+    manager.remove_entry(name)?;
+    
     Ok(())
 }
 

@@ -6,19 +6,10 @@ pub struct PasswordGenerator {
     use_lowercase: bool,
     use_numbers: bool,
     use_special: bool,
+    exclude: String,
 }
 
 impl PasswordGenerator {
-    pub fn new(length: usize, use_uppercase: bool, use_lowercase: bool, use_numbers: bool, use_special: bool) -> Self {
-        Self {
-            length,
-            use_uppercase,
-            use_lowercase,
-            use_numbers,
-            use_special,
-        }
-    }
-
     pub fn default() -> Self {
         Self {
             length: 16,
@@ -26,6 +17,7 @@ impl PasswordGenerator {
             use_lowercase: true,
             use_numbers: true,
             use_special: true,
+            exclude: String::new(),
         }
     }
 
@@ -54,6 +46,22 @@ impl PasswordGenerator {
         self
     }
 
+    pub fn exclude_chars(mut self, to_exclude: &str) -> Self {
+        self.exclude = to_exclude.into();
+        self
+    } 
+
+    pub fn build(&self) -> Self {
+        Self {
+            length: self.length,
+            use_uppercase: self.use_uppercase,
+            use_lowercase: self.use_lowercase,
+            use_numbers: self.use_numbers,
+            use_special: self.use_special,
+            exclude: self.exclude.clone(),
+        }
+    }
+
     pub fn generate(&self) -> String {
         let mut password = String::new();
         let mut rng = rand::thread_rng();
@@ -76,6 +84,9 @@ impl PasswordGenerator {
         if self.use_special {
             char_set.push_str("!@#$%^&*()-_=+");
         }
+
+        // Filter out all exluded chars
+        char_set = char_set.chars().filter(|c| !self.exclude.contains(*c)).collect();
 
         for _ in 0..self.length {
             // the length is inclusive, meaning the range is 0 to char_set.len() - 1
