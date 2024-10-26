@@ -41,6 +41,7 @@ impl EntryManager {
             let env_var = std::env::var("MASTER_KEY").ok();
 
             if let Some(env_var) = env_var {
+                println!("WARNING: env var is set, anyone with access to your computer can also access your passwords.");
                 let env_var_hash = key_derivation::derive_key(&env_var, &salt)?;
                 if env_var_hash == master_password {
                     break;
