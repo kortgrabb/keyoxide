@@ -28,7 +28,7 @@ fn run(mut manager: EntryManager) -> Result<(), PasswordManagerError> {
 
     match args[0].as_str() {
         "add" => handle_add(&args, &mut manager),
-        "get" => handle_get(&args, &manager),
+        "get" | "fetch" => handle_get(&args, &manager),
         "show" => handle_show(&args, &manager),
         "remove" | "delete" => handle_remove(&args, &mut manager),
         _ => {
@@ -106,7 +106,8 @@ fn handle_get(args: &[String], manager: &EntryManager) -> Result<(), PasswordMan
     let name = &args[1];
     match manager.get_entry(name) {
         Ok(entry) => {
-            println!("Password for {}: {}", name, entry.password);
+            let entry_path_name = manager.get_entry_path_name(&entry).unwrap_or(name.to_string());
+            println!("Password for {}: {}", entry_path_name, entry.password);
             Ok(())
         }
         Err(e) => {

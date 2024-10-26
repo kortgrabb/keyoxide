@@ -78,11 +78,18 @@ impl EntryManager {
         Ok(())
     }
 
-    fn load_entries(&self) -> Result<Vec<Entry>, PasswordManagerError> {
-        self.read_entries_in_dir(self.vault_manager.entries_path(), None)
+    pub fn get_entry_path_name(&self, entry: &Entry) -> Option<String> {
+        let base = self.vault_manager.entries_path().to_str()?;
+        let relative_path = entry.path.strip_prefix(base).unwrap_or(&entry.path);
+
+        Some(relative_path.with_extension("").to_string_lossy().to_string())
     }
 
-    fn read_entries_in_dir(&self, path: &std::path::Path, parent: Option<std::path::PathBuf>) -> Result<Vec<Entry>, PasswordManagerError> {
+    fn load_entries(&self) -> Result<Vec<Entry>, PasswordManagerError> {
+        self.read_entries_in_dir(self.vault_manager.entries_path())
+    }
+
+    fn read_entries_in_dir(&self, path: &std::path::Path) -> Result<Vec<Entry>, PasswordManagerError> {
         let mut entries = Vec::new();
         
         for entry in fs::read_dir(path)? {
@@ -90,7 +97,7 @@ impl EntryManager {
             let path = entry.path();
 
             if path.is_dir() {
-                let mut dir_entries = self.read_entries_in_dir(&path, Some(path.clone()))?;
+                let mut dir_entries = self.read_entries_in_dir(&path)?;
                 entries.append(&mut dir_entries);
                 continue;
             }
@@ -144,7 +151,6 @@ impl EntryManager {
                 name: entry_name.into(),
                 password,
                 nonce,
-                parent: parent.clone(),
             });
         }
 
@@ -188,7 +194,6 @@ impl EntryManager {
             name: name.to_string(),
             password: encoded,
             nonce,
-            parent: entry_path.parent().map(|p| p.to_path_buf()),
         };
 
         // check if entry already exists
@@ -241,7 +246,6 @@ impl EntryManager {
             name: entry.name.clone(),
             password: decrypted,
             nonce: entry.nonce.clone(),
-            parent: entry.parent.clone(),
         })
     }
 

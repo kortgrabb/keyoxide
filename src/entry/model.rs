@@ -6,5 +6,4 @@ pub struct Entry {
     pub name: String,
     pub password: String,
     pub nonce: Vec<u8>,
-    pub parent: Option<PathBuf>,
 }
