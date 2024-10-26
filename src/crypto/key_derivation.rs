@@ -1,6 +1,3 @@
-/*
-This module is responsible for deriving a key from a password and a salt
-*/
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
     Argon2,

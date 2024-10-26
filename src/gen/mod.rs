@@ -29,6 +29,31 @@ impl PasswordGenerator {
         }
     }
 
+    pub fn with_length(mut self, length: usize) -> Self {
+        self.length = length;
+        self
+    }
+
+    pub fn with_uppercase(mut self, use_uppercase: bool) -> Self {
+        self.use_uppercase = use_uppercase;
+        self
+    }
+
+    pub fn with_lowercase(mut self, use_lowercase: bool) -> Self {
+        self.use_lowercase = use_lowercase;
+        self
+    }
+
+    pub fn with_numbers(mut self, use_numbers: bool) -> Self {
+        self.use_numbers = use_numbers;
+        self
+    }
+
+    pub fn with_special(mut self, use_special: bool) -> Self {
+        self.use_special = use_special;
+        self
+    }
+
     pub fn generate(&self) -> String {
         let mut password = String::new();
         let mut rng = rand::thread_rng();
