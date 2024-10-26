@@ -29,9 +29,9 @@ pub fn prompt_password() -> String {
 
 pub fn prompt_on_same_line(prompt: &str) -> String {
     print!("{}", prompt);
-    io::stdout().flush().unwrap();
+    io::stdout().flush().expect("Failed to flush stdout");
     let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
+    io::stdin().read_line(&mut input).expect("Failed to read line");
     input.trim().to_string()
 }
 

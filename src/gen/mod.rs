@@ -10,7 +10,7 @@ pub struct PasswordGenerator {
 }
 
 impl PasswordGenerator {
-    pub fn default() -> Self {
+    pub fn with_default() -> Self {
         Self {
             length: 16,
             use_uppercase: true,
@@ -91,7 +91,7 @@ impl PasswordGenerator {
         for _ in 0..self.length {
             // the length is inclusive, meaning the range is 0 to char_set.len() - 1
             let idx = rng.gen_range(0..char_set.len());
-            password.push(char_set.chars().nth(idx).unwrap());
+            password.push(char_set.chars().nth(idx).unwrap_or_default());
         }
 
         password

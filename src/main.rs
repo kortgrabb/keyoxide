@@ -31,6 +31,7 @@ fn run(mut manager: EntryManager) -> Result<(), PasswordManagerError> {
         "get" | "fetch" => handle_get(&args, &manager),
         "show" => handle_show(&args, &manager),
         "remove" | "delete" => handle_remove(&args, &mut manager),
+        "edit" => handle_edit(&args, &mut manager),
         _ => {
             println!("Unknown command: {}", args[0]);
             print_usage();
@@ -46,6 +47,8 @@ fn print_usage() {
     println!("    --gen: Generate a random password");
     println!("  get [name] - Get a password entry");
     println!("  show - Show all password entries");
+    println!("  remove [name] - Remove a password entry");
+    println!("  edit [name] - Edit a password entry (shortcut for remove and add)");
 }
 
 fn extract_flags_and_values(args: &[String]) -> HashMap<String, String> {
@@ -69,7 +72,7 @@ fn handle_add(args: &[String], manager: &mut EntryManager) -> Result<(), Passwor
     let options = extract_flags_and_values(args);
 
     if options.contains_key("gen") {
-        let mut gen = PasswordGenerator::default();
+        let mut gen = PasswordGenerator::with_default();
 
         if options.contains_key("length") {
             let length = options.get("length").unwrap().parse().unwrap();
@@ -124,4 +127,21 @@ fn handle_show(args: &[String], manager: &EntryManager) -> Result<(), PasswordMa
     }
 
     manager.list_entry_tree()
+}
+
+fn handle_edit(args: &[String], manager: &mut EntryManager) -> Result<(), PasswordManagerError> {
+    let name = &args[1];
+    
+    let entry = match manager.get_entry(name) {
+        Ok(entry) => entry,
+        Err(e) => {
+            println!("Error retrieving entry: {}", e);
+            return Ok(());
+        }
+    };
+
+    let new_password = ui::prompt_on_same_line("Enter new password: ");
+    manager.edit_entry_password(&entry.name, &new_password)?;
+
+    Ok(())
 }

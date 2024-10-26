@@ -80,7 +80,7 @@ impl EntryManager {
 
     pub fn get_entry_path_name(&self, entry: &Entry) -> Option<String> {
         let base = self.vault_manager.entries_path().to_str()?;
-        let relative_path = entry.path.strip_prefix(base).unwrap_or(&entry.path);
+        let relative_path = entry.path.strip_prefix(base).ok()?;
 
         Some(relative_path.with_extension("").to_string_lossy().to_string())
     }
@@ -178,7 +178,7 @@ impl EntryManager {
     }
 
     pub fn add_entry(&mut self, name: &str, password: &str) -> Result<(), PasswordManagerError> {
-        let derived_key = key_derivation::derive_key(&password, &self.salt)?;
+        let derived_key = key_derivation::derive_key(password, &self.salt)?;
         let (nonce, encrypted_vec) = AesEncryption::encrypt(password, &derived_key)?;
         let encoded = base64::engine::general_purpose::STANDARD.encode(&encrypted_vec);
         
@@ -226,6 +226,13 @@ impl EntryManager {
             }
         }
 
+        Ok(())
+    }
+
+    pub fn edit_entry_password(&mut self, name: &str, password: &str) -> Result<(), PasswordManagerError> {
+        self.remove_entry(name)?;
+        self.add_entry(name, password)?;
+        self.save_entry(name)?;
         Ok(())
     }
 
