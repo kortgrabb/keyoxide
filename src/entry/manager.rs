@@ -1,5 +1,3 @@
-// manager.rs
-
 use crate::{
     crypto::{aes::AesEncryption, key_derivation},
     error::PasswordManagerError,
@@ -138,7 +136,8 @@ impl EntryManager {
             nonce,
         };
 
-        // Save the entry to the vault
+        // Add the entry to the in-memory list
+        self.entries.push(entry.clone());
         self.vault_manager.save_entry(&entry)?;
 
         Ok(())
@@ -229,6 +228,7 @@ mod tests {
         manager.add_entry(name, password).unwrap();
         let entry = manager.get_entry(name).unwrap();
 
+        println!("Entry name: {}", entry.name);
         assert_eq!(entry.name, name);
     }
 

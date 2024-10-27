@@ -10,6 +10,7 @@ pub mod ui;
 use entry::EntryManager;
 use error::PasswordManagerError;
 use gen::PasswordGenerator;
+use ui::prompt_yes_no;
 
 fn main() -> Result<(), PasswordManagerError> {
     let mut manager = EntryManager::new(".password_manager");
@@ -96,7 +97,24 @@ fn handle_add(args: &[String], manager: &mut EntryManager) -> Result<(), Passwor
 
 fn handle_remove(args: &[String], manager: &mut EntryManager) -> Result<(), PasswordManagerError> {
     let name = &args[1];
-    manager.remove_entry(name)?;
+
+    if let Some(entry) = manager.get_entry(name).ok() {
+        let entry_path_name = manager
+            .get_entry_path_name(&entry)
+            .unwrap_or(name.to_string());
+
+        let confirm = prompt_yes_no(&format!(
+            "Are you sure you want to remove the password for {}? [y/N]: ",
+            entry_path_name
+        ));
+
+        if confirm {
+            manager.remove_entry(name)?;
+            println!("Removed password for {}", entry_path_name);
+        } else {
+            println!("Cancelled removal of password for {}", entry_path_name);
+        }
+    }
 
     Ok(())
 }
