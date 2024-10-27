@@ -26,10 +26,14 @@ fn run(mut manager: EntryManager) -> Result<(), PasswordManagerError> {
 
     match args[0].as_str() {
         "add" => handle_add(&args, &mut manager),
-        "get" | "fetch" => handle_get(&args, &manager),
+        "get" => handle_get(&args, &manager),
         "show" => handle_show(&args, &manager),
         "remove" | "delete" => handle_remove(&args, &mut manager),
         "edit" => handle_edit(&args, &mut manager),
+        "help" => {
+            print_usage();
+            Ok(())
+        }
         _ => {
             println!("Unknown command: {}", args[0]);
             print_usage();
@@ -78,10 +82,12 @@ fn handle_add(args: &[String], manager: &mut EntryManager) -> Result<(), Passwor
 
         let password = gen.generate();
         manager.add_entry(name, &password)?;
+
         println!("Generated password for {}: {}", name, password);
     } else {
         let password = ui::prompt_password();
         manager.add_entry(name, &password)?;
+
         println!("Added password for {}", name);
     }
 

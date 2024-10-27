@@ -21,7 +21,7 @@ impl VaultManager {
         let base_path = dirs::home_dir().unwrap().join(".password_manager");
 
         let entries_path = base_path.join(ENTRIES_PATH);
-        
+
         Self {
             base_path,
             entries_path,
@@ -62,5 +62,33 @@ impl VaultManager {
     pub fn load_salt(&self) -> Result<String, PasswordManagerError> {
         let content = fs::read_to_string(self.base_path.join(".salt"))?;
         Ok(content.trim().to_string())
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_vault_manager() {
+        let vault_manager = VaultManager::new();
+        vault_manager.init().unwrap();
+        vault_manager.save_master_password("password").unwrap();
+        vault_manager.save_salt("salt").unwrap();
+        assert_eq!(vault_manager.load_master_password().unwrap(), "password");
+        assert_eq!(vault_manager.load_salt().unwrap(), "salt");
+    }
+
+    #[test]
+    fn test_vault_manager_base_path() {
+        let vault_manager = VaultManager::new();
+        assert_eq!(vault_manager.base_path(), &PathBuf::from(BASE_PATH));
+    }
+
+    #[test]
+    fn test_vault_manager_entries_path() {
+        let vault_manager = VaultManager::new();
+        assert_eq!(vault_manager.entries_path(), &PathBuf::from(BASE_PATH).join(ENTRIES_PATH));
     }
 }

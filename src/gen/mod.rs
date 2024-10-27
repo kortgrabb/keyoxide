@@ -49,7 +49,7 @@ impl PasswordGenerator {
     pub fn exclude_chars(mut self, to_exclude: &str) -> Self {
         self.exclude = to_exclude.into();
         self
-    } 
+    }
 
     pub fn build(&self) -> Self {
         Self {
@@ -67,7 +67,7 @@ impl PasswordGenerator {
         let mut rng = rand::thread_rng();
 
         // string to hold all the chars we use
-        let mut char_set = String::new();    
+        let mut char_set = String::new();
 
         if self.use_uppercase {
             char_set.push_str("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
@@ -86,7 +86,10 @@ impl PasswordGenerator {
         }
 
         // Filter out all exluded chars
-        char_set = char_set.chars().filter(|c| !self.exclude.contains(*c)).collect();
+        char_set = char_set
+            .chars()
+            .filter(|c| !self.exclude.contains(*c))
+            .collect();
 
         for _ in 0..self.length {
             // the length is inclusive, meaning the range is 0 to char_set.len() - 1
@@ -95,5 +98,60 @@ impl PasswordGenerator {
         }
 
         password
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_password_generator() {
+        let generator = PasswordGenerator::with_default().build();
+        let password = generator.generate();
+        assert_eq!(password.len(), 16);
+    }
+
+    #[test]
+    fn test_password_generator_with_length() {
+        let generator = PasswordGenerator::with_default().with_length(32).build();
+        let password = generator.generate();
+        assert_eq!(password.len(), 32);
+    }
+
+    #[test]
+    fn test_password_generator_with_uppercase() {
+        let generator = PasswordGenerator::with_default().with_uppercase(false).build();
+        let password = generator.generate();
+        assert_eq!(password.chars().any(|c| c.is_uppercase()), false);
+    }
+
+    #[test]
+    fn test_password_generator_with_lowercase() {
+        let generator = PasswordGenerator::with_default().with_lowercase(false).build();
+        let password = generator.generate();
+        assert_eq!(password.chars().any(|c| c.is_lowercase()), false);
+    }
+
+    #[test]
+    fn test_password_generator_with_numbers() {
+        let generator = PasswordGenerator::with_default().with_numbers(false).build();
+        let password = generator.generate();
+        assert_eq!(password.chars().any(|c| c.is_numeric()), false);
+    }
+
+    #[test]
+    fn test_password_generator_with_special() {
+        let generator = PasswordGenerator::with_default().with_special(false).build();
+        let password = generator.generate();
+        assert_eq!(password.chars().any(|c| !c.is_alphanumeric()), false);
+    }
+
+    #[test]
+    fn test_password_generator_exclude_chars() {
+        let generator = PasswordGenerator::with_default().exclude_chars("abc").build();
+        let password = generator.generate();
+        assert_eq!(password.chars().any(|c| c == 'a' || c == 'b' || c == 'c'), false);
     }
 }

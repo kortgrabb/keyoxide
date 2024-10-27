@@ -1,6 +1,11 @@
-use std::fs::{self, create_dir_all};
+use crate::{
+    crypto::{aes::AesEncryption, key_derivation},
+    error::PasswordManagerError,
+    storage::VaultManager,
+    ui,
+};
 use base64::Engine;
-use crate::{crypto::{aes::AesEncryption, key_derivation}, error::PasswordManagerError, storage::VaultManager, ui};
+use std::fs::{self, create_dir_all};
 
 use super::Entry;
 
@@ -82,16 +87,24 @@ impl EntryManager {
         let base = self.vault_manager.entries_path().to_str()?;
         let relative_path = entry.path.strip_prefix(base).ok()?;
 
-        Some(relative_path.with_extension("").to_string_lossy().to_string())
+        Some(
+            relative_path
+                .with_extension("")
+                .to_string_lossy()
+                .to_string(),
+        )
     }
 
     fn load_entries(&self) -> Result<Vec<Entry>, PasswordManagerError> {
         self.read_entries_in_dir(self.vault_manager.entries_path())
     }
 
-    fn read_entries_in_dir(&self, path: &std::path::Path) -> Result<Vec<Entry>, PasswordManagerError> {
+    fn read_entries_in_dir(
+        &self,
+        path: &std::path::Path,
+    ) -> Result<Vec<Entry>, PasswordManagerError> {
         let mut entries = Vec::new();
-        
+
         for entry in fs::read_dir(path)? {
             let entry = entry?;
             let path = entry.path();
@@ -107,12 +120,14 @@ impl EntryManager {
             }
 
             // Get the relative path from entries directory
-            let relative_path = path.strip_prefix(self.vault_manager.entries_path()).map_err(|_| {
-                PasswordManagerError::Io(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "Invalid path prefix",
-                ))
-            })?;
+            let relative_path = path
+                .strip_prefix(self.vault_manager.entries_path())
+                .map_err(|_| {
+                    PasswordManagerError::Io(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "Invalid path prefix",
+                    ))
+                })?;
 
             // Convert the relative path to a name
             let path_name = relative_path
@@ -121,28 +136,36 @@ impl EntryManager {
                 .replace('\\', "/")
                 .to_string();
 
-            let entry_name = path_name
-                .split("/").last().unwrap_or_else(|| {
-                    panic!("Failed to get last path component");
-                });
+            let entry_name = path_name.split("/").last().unwrap_or_else(|| {
+                panic!("Failed to get last path component");
+            });
 
             let content = fs::read_to_string(&path)?;
             let mut lines = content.lines();
 
-            let password = lines.next().ok_or_else(|| {
-                PasswordManagerError::Io(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "Missing password line",
-                ))
-            })?.to_string();
-
-            let nonce = base64::engine::general_purpose::STANDARD
-                .decode(lines.next().ok_or_else(|| {
+            let password = lines
+                .next()
+                .ok_or_else(|| {
                     PasswordManagerError::Io(std::io::Error::new(
                         std::io::ErrorKind::InvalidData,
-                        "Missing nonce line",
+                        "Missing password line",
                     ))
-                })?.as_bytes()).unwrap_or_else(|_| {
+                })?
+                .to_string();
+
+            let nonce = base64::engine::general_purpose::STANDARD
+                .decode(
+                    lines
+                        .next()
+                        .ok_or_else(|| {
+                            PasswordManagerError::Io(std::io::Error::new(
+                                std::io::ErrorKind::InvalidData,
+                                "Missing nonce line",
+                            ))
+                        })?
+                        .as_bytes(),
+                )
+                .unwrap_or_else(|_| {
                     panic!("Failed to decode nonce");
                 });
 
@@ -158,7 +181,8 @@ impl EntryManager {
     }
 
     pub fn save_entry(&self, name: &str) -> Result<(), PasswordManagerError> {
-        let entry = self.entries
+        let entry = self
+            .entries
             .iter()
             .find(|entry| entry.name == name)
             .ok_or_else(|| PasswordManagerError::EntryNotFound(name.to_string()))?;
@@ -181,10 +205,13 @@ impl EntryManager {
         let derived_key = key_derivation::derive_key(password, &self.salt)?;
         let (nonce, encrypted_vec) = AesEncryption::encrypt(password, &derived_key)?;
         let encoded = base64::engine::general_purpose::STANDARD.encode(&encrypted_vec);
-        
-        let entry_path = self.vault_manager.entries_path().join(name).with_extension(ENTRY_EXTENSION);
-       
-        
+
+        let entry_path = self
+            .vault_manager
+            .entries_path()
+            .join(name)
+            .with_extension(ENTRY_EXTENSION);
+
         if let Some(parent) = entry_path.parent() {
             create_dir_all(parent)?;
         }
@@ -198,7 +225,9 @@ impl EntryManager {
 
         // check if entry already exists
         if self.entries.iter().any(|entry| entry.name == name) {
-            let overwrite = ui::prompt_yes_no("An entry with this name already exists, do you want to overwrite it?");
+            let overwrite = ui::prompt_yes_no(
+                "An entry with this name already exists, do you want to overwrite it?",
+            );
             if !overwrite {
                 return Ok(());
             }
@@ -208,20 +237,32 @@ impl EntryManager {
         }
 
         self.entries.push(entry);
-        
+
         Ok(())
     }
 
     pub fn remove_entry(&mut self, name: &str) -> Result<(), PasswordManagerError> {
-        let found = self.entries
+        let found = self
+            .entries
             .iter()
-            .find(|ent| ent.path.with_extension("").to_string_lossy().ends_with(name))
+            .find(|ent| {
+                ent.path
+                    .with_extension("")
+                    .to_string_lossy()
+                    .ends_with(name)
+            })
             .ok_or_else(|| PasswordManagerError::EntryNotFound(name.to_string()))?;
 
         let proceed = ui::prompt_yes_no("Are you sure? ");
         if proceed {
             match fs::remove_file(&found.path) {
-                Ok(_) => println!("Entry {} was removed", found.name),
+                Ok(_) => {
+                    println!("Removed entry: {}", name);
+                    let parent = found.path.parent().unwrap();
+                    if parent.read_dir()?.next().is_none() {
+                        fs::remove_dir(parent)?;
+                    }
+                }
                 Err(e) => println!("Failed to remove entry: {}", e),
             }
         }
@@ -229,7 +270,11 @@ impl EntryManager {
         Ok(())
     }
 
-    pub fn edit_entry_password(&mut self, name: &str, password: &str) -> Result<(), PasswordManagerError> {
+    pub fn edit_entry_password(
+        &mut self,
+        name: &str,
+        password: &str,
+    ) -> Result<(), PasswordManagerError> {
         self.remove_entry(name)?;
         self.add_entry(name, password)?;
         self.save_entry(name)?;
@@ -237,17 +282,26 @@ impl EntryManager {
     }
 
     pub fn get_entry(&self, name: &str) -> Result<Entry, PasswordManagerError> {
-        let entry = self.entries
+        let entry = self
+            .entries
             .iter()
-            .find(|entry| entry.path.with_extension("").to_string_lossy().ends_with(name))
+            .find(|entry| {
+                entry
+                    .path
+                    .with_extension("")
+                    .to_string_lossy()
+                    .ends_with(name)
+            })
             .ok_or_else(|| PasswordManagerError::EntryNotFound(name.to_string()))?;
         let encoded_password = &entry.password;
-        let decoded = base64::engine::general_purpose::STANDARD.decode(encoded_password.as_bytes()).unwrap_or_else(|e| {
-            panic!("Failed to decode base64 password: {}", e);
-        });
-        
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(encoded_password.as_bytes())
+            .unwrap_or_else(|e| {
+                panic!("Failed to decode base64 password: {}", e);
+            });
+
         let decrypted = AesEncryption::decrypt(&decoded, &self.derived_key, &entry.nonce)?;
-        
+
         Ok(Entry {
             path: entry.path.clone(),
             name: entry.name.clone(),
@@ -260,30 +314,33 @@ impl EntryManager {
         self.list_entry_tree_recursive(self.vault_manager.entries_path(), 0)
     }
 
-    fn list_entry_tree_recursive(&self, path: &std::path::Path, depth: usize) -> Result<(), PasswordManagerError> {
+    fn list_entry_tree_recursive(
+        &self,
+        path: &std::path::Path,
+        depth: usize,
+    ) -> Result<(), PasswordManagerError> {
         for entry in fs::read_dir(path)? {
             let entry = entry?;
             let entry_path = entry.path();
-            
+
             if let Ok(relative_path) = entry_path.strip_prefix(self.vault_manager.entries_path()) {
                 let path_name = relative_path
                     .with_extension("")
                     .to_string_lossy()
                     .replace('\\', "/");
 
-                let display_name = path_name
-                    .split("/")
-                    .last()
-                    .unwrap_or_else(|| {
-                        panic!("Failed to get last path component");
-                    });
+                let display_name = path_name.split("/").last().unwrap_or_else(|| {
+                    panic!("Failed to get last path component");
+                });
 
                 let indent = "  ".repeat(depth);
-                
+
                 if entry_path.is_dir() {
                     println!("{}{}/", indent, display_name);
                     self.list_entry_tree_recursive(&entry_path, depth + 1)?;
-                } else if entry_path.extension().and_then(|ext| ext.to_str()) == Some(ENTRY_EXTENSION) {
+                } else if entry_path.extension().and_then(|ext| ext.to_str())
+                    == Some(ENTRY_EXTENSION)
+                {
                     println!("{}*{}", indent, display_name);
                 }
             }
