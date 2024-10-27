@@ -91,8 +91,6 @@ fn handle_add(args: &[String], manager: &mut EntryManager) -> Result<(), Passwor
         println!("Added password for {}", name);
     }
 
-    manager.save_entry(name)?;
-
     Ok(())
 }
 

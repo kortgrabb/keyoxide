@@ -1,3 +1,5 @@
+// manager.rs
+
 use crate::{
     crypto::{aes::AesEncryption, key_derivation},
     error::PasswordManagerError,
@@ -5,7 +7,6 @@ use crate::{
     ui,
 };
 use base64::Engine;
-use std::fs::{self, create_dir_all};
 
 use super::Entry;
 
@@ -19,15 +20,17 @@ pub struct EntryManager {
 }
 
 impl EntryManager {
+    /// Creates a new EntryManager with the specified vault path.
     pub fn new(path: &str) -> Self {
         Self {
             derived_key: String::new(),
-            vault_manager: VaultManager::new(path.into()),
+            vault_manager: VaultManager::new(path),
             entries: vec![],
             salt: String::new(),
         }
     }
 
+    /// Initializes the vault or loads existing data.
     pub fn init_or_load(&mut self) -> Result<(), PasswordManagerError> {
         self.vault_manager.init()?;
         if self.vault_manager.load_master_password().is_ok() {
@@ -38,6 +41,7 @@ impl EntryManager {
         Ok(())
     }
 
+    /// Loads existing vault data after verifying the master password.
     fn load_existing(&mut self) -> Result<(), PasswordManagerError> {
         let master_password = self.vault_manager.load_master_password()?;
         let salt = self.vault_manager.load_salt()?;
@@ -66,10 +70,11 @@ impl EntryManager {
 
         self.derived_key = master_password;
         self.salt = salt;
-        self.entries = self.load_entries()?;
+        self.entries = self.vault_manager.load_entries()?;
         Ok(())
     }
 
+    /// Initializes a new vault by setting up a master password and salt.
     fn initialize_new(&mut self) -> Result<(), PasswordManagerError> {
         let master_password = ui::prompt_master_password(true);
         let salt = key_derivation::generate_salt();
@@ -80,9 +85,11 @@ impl EntryManager {
 
         self.derived_key = derived_key;
         self.salt = salt;
+        self.entries = vec![]; // Initialize with no entries
         Ok(())
     }
 
+    /// Retrieves the path name of an entry relative to the entries directory.
     pub fn get_entry_path_name(&self, entry: &Entry) -> Option<String> {
         let base = self.vault_manager.entries_path().to_str()?;
         let relative_path = entry.path.strip_prefix(base).ok()?;
@@ -95,91 +102,7 @@ impl EntryManager {
         )
     }
 
-    fn load_entries(&self) -> Result<Vec<Entry>, PasswordManagerError> {
-        self.read_entries_in_dir(self.vault_manager.entries_path())
-    }
-
-    fn read_entries_in_dir(
-        &self,
-        path: &std::path::Path,
-    ) -> Result<Vec<Entry>, PasswordManagerError> {
-        let mut entries = Vec::new();
-
-        for entry in fs::read_dir(path)? {
-            let entry = entry?;
-            let path = entry.path();
-
-            if path.is_dir() {
-                let mut dir_entries = self.read_entries_in_dir(&path)?;
-                entries.append(&mut dir_entries);
-                continue;
-            }
-
-            if path.extension().and_then(|ext| ext.to_str()) != Some(ENTRY_EXTENSION) {
-                continue;
-            }
-
-            // Get the relative path from entries directory
-            let relative_path = path
-                .strip_prefix(self.vault_manager.entries_path())
-                .map_err(|_| {
-                    PasswordManagerError::Io(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "Invalid path prefix",
-                    ))
-                })?;
-
-            // Convert the relative path to a name
-            let path_name = relative_path
-                .with_extension("")
-                .to_string_lossy()
-                .replace('\\', "/")
-                .to_string();
-
-            let entry_name = path_name.split("/").last().unwrap_or_else(|| {
-                panic!("Failed to get last path component");
-            });
-
-            let content = fs::read_to_string(&path)?;
-            let mut lines = content.lines();
-
-            let password = lines
-                .next()
-                .ok_or_else(|| {
-                    PasswordManagerError::Io(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "Missing password line",
-                    ))
-                })?
-                .to_string();
-
-            let nonce = base64::engine::general_purpose::STANDARD
-                .decode(
-                    lines
-                        .next()
-                        .ok_or_else(|| {
-                            PasswordManagerError::Io(std::io::Error::new(
-                                std::io::ErrorKind::InvalidData,
-                                "Missing nonce line",
-                            ))
-                        })?
-                        .as_bytes(),
-                )
-                .unwrap_or_else(|_| {
-                    panic!("Failed to decode nonce");
-                });
-
-            entries.push(Entry {
-                path,
-                name: entry_name.into(),
-                password,
-                nonce,
-            });
-        }
-
-        Ok(entries)
-    }
-
+    /// Saves a specific entry using VaultManager.
     pub fn save_entry(&self, name: &str) -> Result<(), PasswordManagerError> {
         let entry = self
             .entries
@@ -187,37 +110,27 @@ impl EntryManager {
             .find(|entry| entry.name == name)
             .ok_or_else(|| PasswordManagerError::EntryNotFound(name.to_string()))?;
 
-        let content = format!(
-            "{}\n{}",
-            entry.password,
-            base64::engine::general_purpose::STANDARD.encode(&entry.nonce)
-        );
-
-        if let Some(parent) = entry.path.parent() {
-            create_dir_all(parent)?;
-        }
-
-        fs::write(&entry.path, content)?;
+        self.vault_manager.save_entry(entry)?;
         Ok(())
     }
 
+    /// Adds a new password entry.
     pub fn add_entry(&mut self, name: &str, password: &str) -> Result<(), PasswordManagerError> {
+        // Derive a key from the provided password and salt
         let derived_key = key_derivation::derive_key(password, &self.salt)?;
+
+        // Encrypt the password using AES encryption
         let (nonce, encrypted_vec) = AesEncryption::encrypt(password, &derived_key)?;
         let encoded = base64::engine::general_purpose::STANDARD.encode(&encrypted_vec);
 
+        // Define the path for the new entry
         let entry_path = self
             .vault_manager
             .entries_path()
             .join(name)
             .with_extension(ENTRY_EXTENSION);
 
-        if let Some(parent) = entry_path.parent() {
-            create_dir_all(parent)?;
-        }
-
-        println!("Entry path: {:?}", entry_path);
-
+        // Create a new Entry instance
         let entry = Entry {
             path: entry_path.clone(),
             name: name.to_string(),
@@ -225,67 +138,53 @@ impl EntryManager {
             nonce,
         };
 
-        self.entries.push(entry);
-        self.save_entry(name)?;
+        // Save the entry to the vault
+        self.vault_manager.save_entry(&entry)?;
 
         Ok(())
     }
 
+    /// Removes an existing password entry by name.
     pub fn remove_entry(&mut self, name: &str) -> Result<(), PasswordManagerError> {
-        // Find the entry in the vector to get its path
-        let found = self
-            .entries
-            .iter()
-            .find(|ent| {
-                ent.path
-                    .with_extension("")
-                    .to_string_lossy()
-                    .ends_with(name)
-            })
-            .ok_or_else(|| PasswordManagerError::EntryNotFound(name.to_string()))?;
+        // Delegate the removal to VaultManager
+        self.vault_manager.remove_entry(name)?;
 
-        // Remove the file
-        if let Err(e) = fs::remove_file(&found.path) {
-            eprintln!("Failed to delete file at {:?}: {:?}", found.path, e);
-            return Err(PasswordManagerError::Io(e));
-        }
-
-        // Update the entries vector
+        // Update the in-memory entries list
         self.entries.retain(|ent| ent.name != name);
-
         Ok(())
     }
 
+    /// Edits the password of an existing entry.
     pub fn edit_entry_password(
         &mut self,
         name: &str,
         password: &str,
     ) -> Result<(), PasswordManagerError> {
+        // Remove the existing entry
         self.remove_entry(name)?;
+
+        // Add the entry with the new password
         self.add_entry(name, password)?;
+
+        // Save the updated entry
         self.save_entry(name)?;
         Ok(())
     }
 
+    /// Retrieves a specific entry by name, decrypting its password.
     pub fn get_entry(&self, name: &str) -> Result<Entry, PasswordManagerError> {
         let entry = self
             .entries
             .iter()
-            .find(|entry| {
-                entry
-                    .path
-                    .with_extension("")
-                    .to_string_lossy()
-                    .ends_with(name)
-            })
+            .find(|entry| entry.name == name)
             .ok_or_else(|| PasswordManagerError::EntryNotFound(name.to_string()))?;
 
         let encoded_password = &entry.password;
         let decoded = base64::engine::general_purpose::STANDARD
             .decode(encoded_password.as_bytes())
-            .unwrap_or_else(|e| {
-                panic!("Failed to decode base64 password: {}", e);
-            });
+            .map_err(|e| {
+                PasswordManagerError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+            })?;
 
         let decrypted = AesEncryption::decrypt(&decoded, &self.derived_key, &entry.nonce)?;
 
@@ -297,42 +196,9 @@ impl EntryManager {
         })
     }
 
+    /// Lists all entries in a tree-like structure by delegating to VaultManager.
     pub fn list_entry_tree(&self) -> Result<(), PasswordManagerError> {
-        self.list_entry_tree_recursive(self.vault_manager.entries_path(), 0)
-    }
-
-    fn list_entry_tree_recursive(
-        &self,
-        path: &std::path::Path,
-        depth: usize,
-    ) -> Result<(), PasswordManagerError> {
-        for entry in fs::read_dir(path)? {
-            let entry = entry?;
-            let entry_path = entry.path();
-
-            if let Ok(relative_path) = entry_path.strip_prefix(self.vault_manager.entries_path()) {
-                let path_name = relative_path
-                    .with_extension("")
-                    .to_string_lossy()
-                    .replace('\\', "/");
-
-                let display_name = path_name.split("/").last().unwrap_or_else(|| {
-                    panic!("Failed to get last path component");
-                });
-
-                let indent = "  ".repeat(depth);
-
-                if entry_path.is_dir() {
-                    println!("{}{}/", indent, display_name);
-                    self.list_entry_tree_recursive(&entry_path, depth + 1)?;
-                } else if entry_path.extension().and_then(|ext| ext.to_str())
-                    == Some(ENTRY_EXTENSION)
-                {
-                    println!("{}*{}", indent, display_name);
-                }
-            }
-        }
-        Ok(())
+        self.vault_manager.list_entry_tree()
     }
 }
 
@@ -341,7 +207,7 @@ mod tests {
     use super::*;
     use tempfile::TempDir; // Ensure TempDir is in scope
 
-    // Modify the function to return both EntryManager and TempDir
+    /// Creates a temporary EntryManager and TempDir for testing.
     fn create_temp_manager() -> (EntryManager, TempDir) {
         let temp_dir = tempfile::tempdir().unwrap();
         let mut manager = EntryManager::new(temp_dir.path().to_str().unwrap());
@@ -351,7 +217,7 @@ mod tests {
 
         println!("Temp dir: {:?}", temp_dir.path());
         manager.vault_manager.init().unwrap();
-        (manager, temp_dir) // Return both
+        (manager, temp_dir) // Return both to keep TempDir alive
     }
 
     #[test]
