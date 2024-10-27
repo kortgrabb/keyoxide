@@ -19,10 +19,10 @@ pub struct EntryManager {
 }
 
 impl EntryManager {
-    pub fn new() -> Self {
+    pub fn new(path: &str) -> Self {
         Self {
             derived_key: String::new(),
-            vault_manager: VaultManager::new(),
+            vault_manager: VaultManager::new(path.into()),
             entries: vec![],
             salt: String::new(),
         }
@@ -216,6 +216,8 @@ impl EntryManager {
             create_dir_all(parent)?;
         }
 
+        println!("Entry path: {:?}", entry_path);
+
         let entry = Entry {
             path: entry_path.clone(),
             name: name.to_string(),
@@ -223,25 +225,14 @@ impl EntryManager {
             nonce,
         };
 
-        // check if entry already exists
-        if self.entries.iter().any(|entry| entry.name == name) {
-            let overwrite = ui::prompt_yes_no(
-                "An entry with this name already exists, do you want to overwrite it?",
-            );
-            if !overwrite {
-                return Ok(());
-            }
-
-            // remove the existing entry
-            self.entries.retain(|entry| entry.name != name);
-        }
-
         self.entries.push(entry);
+        self.save_entry(name)?;
 
         Ok(())
     }
 
     pub fn remove_entry(&mut self, name: &str) -> Result<(), PasswordManagerError> {
+        // Find the entry in the vector to get its path
         let found = self
             .entries
             .iter()
@@ -253,19 +244,14 @@ impl EntryManager {
             })
             .ok_or_else(|| PasswordManagerError::EntryNotFound(name.to_string()))?;
 
-        let proceed = ui::prompt_yes_no("Are you sure? ");
-        if proceed {
-            match fs::remove_file(&found.path) {
-                Ok(_) => {
-                    println!("Removed entry: {}", name);
-                    let parent = found.path.parent().unwrap();
-                    if parent.read_dir()?.next().is_none() {
-                        fs::remove_dir(parent)?;
-                    }
-                }
-                Err(e) => println!("Failed to remove entry: {}", e),
-            }
+        // Remove the file
+        if let Err(e) = fs::remove_file(&found.path) {
+            eprintln!("Failed to delete file at {:?}: {:?}", found.path, e);
+            return Err(PasswordManagerError::Io(e));
         }
+
+        // Update the entries vector
+        self.entries.retain(|ent| ent.name != name);
 
         Ok(())
     }
@@ -293,6 +279,7 @@ impl EntryManager {
                     .ends_with(name)
             })
             .ok_or_else(|| PasswordManagerError::EntryNotFound(name.to_string()))?;
+
         let encoded_password = &entry.password;
         let decoded = base64::engine::general_purpose::STANDARD
             .decode(encoded_password.as_bytes())
@@ -346,5 +333,62 @@ impl EntryManager {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir; // Ensure TempDir is in scope
+
+    // Modify the function to return both EntryManager and TempDir
+    fn create_temp_manager() -> (EntryManager, TempDir) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mut manager = EntryManager::new(temp_dir.path().to_str().unwrap());
+
+        manager.salt = key_derivation::generate_salt();
+        manager.derived_key = key_derivation::derive_key("password", &manager.salt).unwrap();
+
+        println!("Temp dir: {:?}", temp_dir.path());
+        manager.vault_manager.init().unwrap();
+        (manager, temp_dir) // Return both
+    }
+
+    #[test]
+    fn test_entry_manager_add() {
+        let (mut manager, _temp_dir) = create_temp_manager(); // Keep TempDir alive
+        let name = "test";
+        let password = "password";
+
+        manager.add_entry(name, password).unwrap();
+        let entry = manager.get_entry(name).unwrap();
+
+        assert_eq!(entry.name, name);
+    }
+
+    #[test]
+    fn test_entry_manager_remove() {
+        let (mut manager, _temp_dir) = create_temp_manager(); // Keep TempDir alive
+        let name = "test";
+        let password = "password";
+
+        manager.add_entry(name, password).unwrap();
+        manager.remove_entry(name).unwrap();
+
+        assert!(manager.get_entry(name).is_err());
+    }
+
+    #[test]
+    fn test_entry_manager_edit() {
+        let (mut manager, _temp_dir) = create_temp_manager(); // Keep TempDir alive
+        let name = "test";
+        let password = "password";
+        let new_password = "new_password";
+
+        manager.add_entry(name, password).unwrap();
+        manager.edit_entry_password(name, new_password).unwrap();
+
+        let entry = manager.get_entry(name).unwrap();
+        assert_eq!(entry.password, new_password);
     }
 }

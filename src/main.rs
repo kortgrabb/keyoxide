@@ -12,7 +12,7 @@ use error::PasswordManagerError;
 use gen::PasswordGenerator;
 
 fn main() -> Result<(), PasswordManagerError> {
-    let mut manager = EntryManager::new();
+    let mut manager = EntryManager::new(".password_manager");
     manager.init_or_load()?;
 
     run(manager)

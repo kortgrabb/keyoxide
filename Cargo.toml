@@ -11,3 +11,4 @@ dirs = "5.0.1"
 serde = { version = "1.0.213", features = ["derive"] }
 thiserror = "1.0.65"
 rand = "*"
+tempfile = "3.13.0"
