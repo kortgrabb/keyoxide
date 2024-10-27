@@ -1,5 +1,4 @@
 use std::{collections::HashMap, env};
-
 pub mod crypto;
 pub mod entry;
 pub mod error;
@@ -54,6 +53,7 @@ fn print_usage() {
     println!("  edit [name] - Edit a password entry (shortcut for remove and add)");
 }
 
+// TODO: Add support for short flags
 fn extract_flags_and_values(args: &[String]) -> HashMap<String, String> {
     let mut options = HashMap::new();
     let provided_flags = args.iter().filter(|arg| arg.starts_with("--"));
@@ -98,13 +98,13 @@ fn handle_add(args: &[String], manager: &mut EntryManager) -> Result<(), Passwor
 fn handle_remove(args: &[String], manager: &mut EntryManager) -> Result<(), PasswordManagerError> {
     let name = &args[1];
 
-    if let Some(entry) = manager.get_entry(name).ok() {
+    if let Ok(entry) = manager.get_entry(name) {
         let entry_path_name = manager
             .get_entry_path_name(&entry)
             .unwrap_or(name.to_string());
 
         let confirm = prompt_yes_no(&format!(
-            "Are you sure you want to remove the password for {}? [y/N]: ",
+            "Are you sure you want to remove the password for {}?",
             entry_path_name
         ));
 
