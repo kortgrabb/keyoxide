@@ -3,14 +3,13 @@ use std::{collections::HashMap, env};
 pub mod crypto;
 pub mod entry;
 pub mod error;
+pub mod gen;
 pub mod storage;
 pub mod ui;
-pub mod gen;
 
 use entry::EntryManager;
 use error::PasswordManagerError;
 use gen::PasswordGenerator;
-
 
 fn main() -> Result<(), PasswordManagerError> {
     let mut manager = EntryManager::new();
@@ -18,7 +17,6 @@ fn main() -> Result<(), PasswordManagerError> {
 
     run(manager)
 }
-
 fn run(mut manager: EntryManager) -> Result<(), PasswordManagerError> {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.is_empty() {
@@ -73,7 +71,6 @@ fn handle_add(args: &[String], manager: &mut EntryManager) -> Result<(), Passwor
 
     if options.contains_key("gen") {
         let mut gen = PasswordGenerator::with_default();
-
         if options.contains_key("length") {
             let length = options.get("length").unwrap().parse().unwrap();
             gen = gen.with_length(length);
@@ -96,7 +93,7 @@ fn handle_add(args: &[String], manager: &mut EntryManager) -> Result<(), Passwor
 fn handle_remove(args: &[String], manager: &mut EntryManager) -> Result<(), PasswordManagerError> {
     let name = &args[1];
     manager.remove_entry(name)?;
-    
+
     Ok(())
 }
 
@@ -109,7 +106,9 @@ fn handle_get(args: &[String], manager: &EntryManager) -> Result<(), PasswordMan
     let name = &args[1];
     match manager.get_entry(name) {
         Ok(entry) => {
-            let entry_path_name = manager.get_entry_path_name(&entry).unwrap_or(name.to_string());
+            let entry_path_name = manager
+                .get_entry_path_name(&entry)
+                .unwrap_or(name.to_string());
             println!("Password for {}: {}", entry_path_name, entry.password);
             Ok(())
         }
@@ -131,7 +130,7 @@ fn handle_show(args: &[String], manager: &EntryManager) -> Result<(), PasswordMa
 
 fn handle_edit(args: &[String], manager: &mut EntryManager) -> Result<(), PasswordManagerError> {
     let name = &args[1];
-    
+
     let entry = match manager.get_entry(name) {
         Ok(entry) => entry,
         Err(e) => {
