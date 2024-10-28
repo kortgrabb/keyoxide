@@ -1,4 +1,5 @@
 use std::{collections::HashMap, env};
+
 pub mod crypto;
 pub mod entry;
 pub mod error;
@@ -9,14 +10,15 @@ pub mod ui;
 use entry::EntryManager;
 use error::PasswordManagerError;
 use gen::PasswordGenerator;
-use ui::prompt_yes_no;
+
+const PASSWORD_MANAGER_PATH: &str = ".password_manager";
 
 fn main() -> Result<(), PasswordManagerError> {
-    let mut manager = EntryManager::new(".password_manager");
+    let mut manager = EntryManager::new(PASSWORD_MANAGER_PATH);
     manager.init_or_load()?;
-
     run(manager)
 }
+
 fn run(mut manager: EntryManager) -> Result<(), PasswordManagerError> {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.is_empty() {
@@ -103,7 +105,7 @@ fn handle_remove(args: &[String], manager: &mut EntryManager) -> Result<(), Pass
             .get_entry_path_name(&entry)
             .unwrap_or(name.to_string());
 
-        let confirm = prompt_yes_no(&format!(
+        let confirm = ui::prompt_yes_no(&format!(
             "Are you sure you want to remove the password for {}?",
             entry_path_name
         ));

@@ -26,3 +26,4 @@ impl From<std::io::Error> for PasswordManagerError {
         Self::Io(err)
     }
 }
+
