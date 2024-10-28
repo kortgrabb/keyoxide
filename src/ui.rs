@@ -37,7 +37,7 @@ pub fn prompt_on_same_line(prompt: &str) -> String {
     input.trim().to_string()
 }
 
-pub fn prompt_yes_no(prompt: &str) -> bool {
+pub fn prompt_confirm(prompt: &str) -> bool {
     let response = prompt_on_same_line(&format!("{} (y/N): ", prompt));
     response.to_lowercase() == "y"
 }

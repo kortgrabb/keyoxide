@@ -16,6 +16,7 @@ const PASSWORD_MANAGER_PATH: &str = ".password_manager";
 fn main() -> Result<(), PasswordManagerError> {
     let mut manager = EntryManager::new(PASSWORD_MANAGER_PATH);
     manager.init_or_load()?;
+
     run(manager)
 }
 
@@ -105,16 +106,17 @@ fn handle_remove(args: &[String], manager: &mut EntryManager) -> Result<(), Pass
             .get_entry_path_name(&entry)
             .unwrap_or(name.to_string());
 
-        let confirm = ui::prompt_yes_no(&format!(
+        match ui::prompt_confirm(&format!(
             "Are you sure you want to remove the password for {}?",
             entry_path_name
-        ));
-
-        if confirm {
-            manager.remove_entry(name)?;
-            println!("Removed password for {}", entry_path_name);
-        } else {
-            println!("Cancelled removal of password for {}", entry_path_name);
+        )) {
+            true => {
+                manager.remove_entry(name)?;
+                println!("Removed password for {}", entry_path_name);
+            }
+            false => {
+                println!("Cancelled removal of password for {}", entry_path_name);
+            }
         }
     }
 
@@ -155,16 +157,26 @@ fn handle_show(args: &[String], manager: &EntryManager) -> Result<(), PasswordMa
 fn handle_edit(args: &[String], manager: &mut EntryManager) -> Result<(), PasswordManagerError> {
     let name = &args[1];
 
-    let entry = match manager.get_entry(name) {
+    match manager.get_entry(name) {
         Ok(entry) => entry,
-        Err(e) => {
-            println!("Error retrieving entry: {}", e);
+        Err(_) => {
+            println!("no entry found for name: {}", name);
             return Ok(());
         }
     };
 
-    let new_password = ui::prompt_on_same_line("Enter new password: ");
-    manager.edit_entry_password(&entry.name, &new_password)?;
+    let new_password = ui::prompt_password();
+    match ui::prompt_confirm(&format!(
+        "Are you sure you want to edit the password for {}?",
+        name
+    )) {
+        true => {
+            manager.edit_entry_password(&name, &new_password)?;
+        }
+        false => {
+            println!("Cancelled editing of password for {}", name);
+        }
+    }
 
     Ok(())
 }
