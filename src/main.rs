@@ -75,14 +75,38 @@ fn extract_flags_and_values(args: &[String]) -> HashMap<String, String> {
 
 fn handle_add(args: &[String], manager: &mut EntryManager) -> Result<(), PasswordManagerError> {
     let name = &args[1];
+
+    // check if one already exists, ask to overwrite
+    if let Ok(entry) = manager.get_entry(name) {
+        let entry_path_name = manager
+            .get_entry_path_name(&entry)
+            .unwrap_or(name.to_string());
+
+        if ui::prompt_confirm(&format!(
+            "An entry for {} already exists. Do you want to overwrite it?",
+            entry_path_name
+        )) {
+            manager.remove_entry(name)?;
+        } else {
+            println!("Cancelled adding password for {}", entry_path_name);
+            return Ok(());
+        }
+    }
+
     let options = extract_flags_and_values(args);
 
     if options.contains_key("gen") {
-        let mut gen = PasswordGenerator::with_default();
-        if options.contains_key("length") {
-            let length = options.get("length").unwrap().parse().unwrap();
-            gen = gen.with_length(length);
-        }
+        let length = options
+            .get("length")
+            .and_then(|l| l.parse().ok())
+            .unwrap_or(16);
+        let exclude = options.get("exclude").unwrap_or(&String::new()).to_string();
+
+        // println!("exclude: {}", exclude);
+
+        let gen = PasswordGenerator::with_default()
+            .with_length(length)
+            .exclude_chars(&exclude);
 
         let password = gen.generate();
         manager.add_entry(name, &password)?;
@@ -106,17 +130,14 @@ fn handle_remove(args: &[String], manager: &mut EntryManager) -> Result<(), Pass
             .get_entry_path_name(&entry)
             .unwrap_or(name.to_string());
 
-        match ui::prompt_confirm(&format!(
-            "Are you sure you want to remove the password for {}?",
+        if ui::prompt_confirm(&format!(
+            "Do you want to remove the entry for {}?",
             entry_path_name
         )) {
-            true => {
-                manager.remove_entry(name)?;
-                println!("Removed password for {}", entry_path_name);
-            }
-            false => {
-                println!("Cancelled removal of password for {}", entry_path_name);
-            }
+            manager.remove_entry(name)?;
+            println!("Removed password for {}", entry_path_name);
+        } else {
+            println!("Cancelled removing password for {}", entry_path_name);
         }
     }
 
@@ -166,16 +187,11 @@ fn handle_edit(args: &[String], manager: &mut EntryManager) -> Result<(), Passwo
     };
 
     let new_password = ui::prompt_password();
-    match ui::prompt_confirm(&format!(
-        "Are you sure you want to edit the password for {}?",
-        name
-    )) {
-        true => {
-            manager.edit_entry_password(&name, &new_password)?;
-        }
-        false => {
-            println!("Cancelled editing of password for {}", name);
-        }
+    if ui::prompt_confirm("Do you want to overwrite the existing password?") {
+        manager.add_entry(name, &new_password)?;
+        println!("Updated password for {}", name);
+    } else {
+        println!("Cancelled updating password for {}", name);
     }
 
     Ok(())
