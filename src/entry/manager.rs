@@ -27,7 +27,7 @@ impl EntryManager {
             salt: String::new(),
         }
     }
-
+    
     /// Initializes the vault or loads existing data.
     pub fn init_or_load(&mut self) -> Result<(), PasswordManagerError> {
         self.vault_manager.init()?;
@@ -169,7 +169,7 @@ impl EntryManager {
         self.save_entry(name)?;
         Ok(())
     }
-
+    // TODO: Delete by path
     /// Retrieves a specific entry by name, decrypting its password.
     pub fn get_entry(&self, name: &str) -> Result<Entry, PasswordManagerError> {
         let entry = self
