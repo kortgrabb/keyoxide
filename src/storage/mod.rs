@@ -183,7 +183,7 @@ impl VaultManager {
         let entries = self.load_entries()?;
         let found = entries
             .iter()
-            .find(|ent| ent.name == name)
+            .find(|entry| entry.path.with_extension("").ends_with(name))
             .ok_or_else(|| PasswordManagerError::EntryNotFound(name.to_string()))?;
 
         fs::remove_file(&found.path)?;
@@ -238,4 +238,3 @@ impl VaultManager {
         Ok(())
     }
 }
-

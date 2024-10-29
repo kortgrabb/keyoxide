@@ -148,8 +148,10 @@ impl EntryManager {
         // Delegate the removal to VaultManager
         self.vault_manager.remove_entry(name)?;
 
-        // Update the in-memory entries list
-        self.entries.retain(|ent| ent.name != name);
+        // Remove the entry from the in-memory list
+        self.entries
+            .retain(|entry| entry.path.with_extension("").ends_with(name));
+
         Ok(())
     }
 
@@ -175,7 +177,7 @@ impl EntryManager {
         let entry = self
             .entries
             .iter()
-            .find(|entry| entry.name == name)
+            .find(|entry| entry.path.with_extension("").ends_with(name))
             .ok_or_else(|| PasswordManagerError::EntryNotFound(name.to_string()))?;
 
         let encoded_password = &entry.password;
@@ -193,6 +195,11 @@ impl EntryManager {
             password: decrypted,
             nonce: entry.nonce.clone(),
         })
+    }
+
+    pub fn has_entry(&self, name: &str) -> bool {
+        let entry = self.get_entry(name);
+        entry.is_ok()
     }
 
     /// Lists all entries in a tree-like structure by delegating to VaultManager.

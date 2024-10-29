@@ -56,6 +56,12 @@ fn print_usage() {
     println!("  edit [name] - Edit a password entry (shortcut for remove and add)");
 }
 
+// helper function to check if an entry exists
+fn does_entry_exist(manager: &EntryManager, name: &str) -> bool {
+    let entry = manager.get_entry(name);
+    entry.is_ok()
+}
+
 // TODO: Add support for short flags
 fn extract_flags_and_values(args: &[String]) -> HashMap<String, String> {
     let mut options = HashMap::new();
@@ -73,22 +79,30 @@ fn extract_flags_and_values(args: &[String]) -> HashMap<String, String> {
     options
 }
 
+// Helper function to generate a password based on the provided options
+fn generate_password(options: &HashMap<String, String>) -> String {
+    let length = options
+        .get("length")
+        .and_then(|l| l.parse().ok())
+        .unwrap_or(16);
+    let exclude = options.get("exclude").unwrap_or(&String::new()).to_string();
+
+    let gen = PasswordGenerator::with_default()
+        .with_length(length)
+        .exclude_chars(&exclude);
+
+    gen.generate()
+}
+
+// Top-level function to handle adding a new password entry
 fn handle_add(args: &[String], manager: &mut EntryManager) -> Result<(), PasswordManagerError> {
     let name = &args[1];
-
-    // check if one already exists, ask to overwrite
-    if let Ok(entry) = manager.get_entry(name) {
-        let entry_path_name = manager
-            .get_entry_path_name(&entry)
-            .unwrap_or(name.to_string());
-
-        if ui::prompt_confirm(&format!(
-            "An entry for {} already exists. Do you want to overwrite it?",
-            entry_path_name
-        )) {
+    if does_entry_exist(manager, name) {
+        println!("Entry for {} already exists", name);
+        if ui::prompt_confirm("Do you want to overwrite the existing entry?") {
             manager.remove_entry(name)?;
         } else {
-            println!("Cancelled adding password for {}", entry_path_name);
+            println!("Cancelled adding password for {}", name);
             return Ok(());
         }
     }
@@ -96,27 +110,15 @@ fn handle_add(args: &[String], manager: &mut EntryManager) -> Result<(), Passwor
     let options = extract_flags_and_values(args);
 
     if options.contains_key("gen") {
-        let length = options
-            .get("length")
-            .and_then(|l| l.parse().ok())
-            .unwrap_or(16);
-        let exclude = options.get("exclude").unwrap_or(&String::new()).to_string();
+        let password = generate_password(&options);
 
-        // println!("exclude: {}", exclude);
-
-        let gen = PasswordGenerator::with_default()
-            .with_length(length)
-            .exclude_chars(&exclude);
-
-        let password = gen.generate();
         manager.add_entry(name, &password)?;
-
         println!("Generated password for {}: {}", name, password);
     } else {
         let password = ui::prompt_password();
         manager.add_entry(name, &password)?;
 
-        println!("Added password for {}", name);
+        println!("Added password {} for {}", password, name);
     }
 
     Ok(())
@@ -196,3 +198,4 @@ fn handle_edit(args: &[String], manager: &mut EntryManager) -> Result<(), Passwo
 
     Ok(())
 }
+
