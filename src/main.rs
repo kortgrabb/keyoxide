@@ -30,7 +30,7 @@ fn run(mut manager: EntryManager) -> Result<(), PasswordManagerError> {
     match args[0].as_str() {
         "add" => handle_add(&args, &mut manager),
         "get" => handle_get(&args, &manager),
-        "show" => handle_show(&args, &manager),
+        "list" | "getall" => handle_list(&args, &manager),
         "remove" | "delete" => handle_remove(&args, &mut manager),
         "edit" => handle_edit(&args, &mut manager),
         "help" => {
@@ -47,7 +47,7 @@ fn run(mut manager: EntryManager) -> Result<(), PasswordManagerError> {
 
 fn print_usage() {
     println!("Usage: password_manager [add|get|show] [name]");
-    println!("\nCommands:");
+    println!("\nAvailable Commands:");
     println!("  add [name] [--gen] - Add a new password entry");
     println!("    --gen: Generate a random password");
     println!("  get [name] - Get a password entry");
@@ -166,7 +166,7 @@ fn handle_get(args: &[String], manager: &EntryManager) -> Result<(), PasswordMan
     }
 }
 
-fn handle_show(args: &[String], manager: &EntryManager) -> Result<(), PasswordManagerError> {
+fn handle_list(args: &[String], manager: &EntryManager) -> Result<(), PasswordManagerError> {
     if args.len() != 1 {
         println!("Usage: password_manager show");
         return Ok(());
